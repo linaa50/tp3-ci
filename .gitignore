@@ -1,0 +1,5 @@
+jenkins_gitlab
+jenkins_gitlab.pub
+*.pem
+.env
+token.txt
