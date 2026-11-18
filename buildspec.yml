@@ -1,0 +1,29 @@
+version: 0.2
+env:
+  shell: bash
+phases:
+  pre_build:
+    commands:
+      - set -e
+      - test "$COMPONENT" = server -o "$COMPONENT" = client
+      - ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+      - REGISTRY="$ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com"
+      - IMAGE_URI="$REGISTRY/tp35-$COMPONENT"
+      - IMAGE_TAG="${CODEBUILD_RESOLVED_SOURCE_VERSION:0:12}"
+      - test -n "$IMAGE_TAG"
+      - aws ecr get-login-password --region "$AWS_DEFAULT_REGION" | docker login --username AWS --password-stdin "$REGISTRY"
+  build:
+    commands:
+      - docker build -t "$IMAGE_URI:$IMAGE_TAG" "$COMPONENT"
+      - docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.76.2 image --severity HIGH,CRITICAL --exit-code 0 "$IMAGE_URI:$IMAGE_TAG" > trivy_report.txt
+      - cat trivy_report.txt
+      - docker push "$IMAGE_URI:$IMAGE_TAG"
+  post_build:
+    commands:
+      - 'printf ''[{"name":"%s","imageUri":"%s"}]\n'' "$COMPONENT" "$IMAGE_URI:$IMAGE_TAG" > imagedefinitions.json'
+      - 'printf ''{"ImageURI":"%s"}\n'' "$IMAGE_URI:$IMAGE_TAG" > imageDetail.json'
+artifacts:
+  files:
+    - imagedefinitions.json
+    - imageDetail.json
+    - trivy_report.txt
